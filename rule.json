@@ -1,0 +1,28 @@
+{
+  "name": "Slow username enumeration from a single external source, followed by a successful administrative logon",
+  "description": "Lab rule for the CTIA account-enumeration-001 scenario. One external address walked a list of twenty usernames against a single server, making exactly one authentication attempt per account at a constant two-minute interval, so no account ever reached a lockout threshold and no per-account alarm could fire. The query is the same one the investigation uses, so the count the alert reports and the count you find by hand are the same number. Scoped to the lab's external address on purpose so the result is unambiguous, and left without a threshold so every one of the twenty probes arrives as its own alert. The time window is deliberately long because this lab ships historical data - that is a lab-only concession, not a production setting; a real deployment would use a short window and alert on the shape of the run - one attempt per distinct account, a near-constant interval, one destination host - rather than on one address at all.",
+  "type": "query",
+  "risk_score": 75,
+  "severity": "high",
+  "tags": [
+    "ctia-lab",
+    "windows",
+    "authentication",
+    "username-enumeration",
+    "credential-access",
+    "detection-engineering"
+  ],
+  "enabled": true,
+  "interval": "1m",
+  "from": "now-365d",
+  "to": "now",
+  "index": [
+    "auth-*"
+  ],
+  "timeField": "@timestamp",
+  "query": "event.code: 4625 and source.ip: \"203.0.113.45\"",
+  "language": "kuery",
+  "max_signals": 100,
+  "actions": [],
+  "notify_when": "onActiveAlert"
+}
