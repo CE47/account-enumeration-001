@@ -115,7 +115,6 @@ other Docker resources or other labs.
 |---|---|
 | `README.md` | this file |
 | `guided-walkthrough.html` | **the investigation guide and the write-up / submission form — open this in a browser** |
-| `guided-walkthrough.md` | the same guide as printable plain text |
 | `auth.ndjson` / `auth.json` | auth events and the `auth-*` index template |
 | `network.ndjson` / `network.json` | network events and the `network-*` index template |
 | `rule.json` | the detection rule the lab installs, so the Alerts page is not empty |
