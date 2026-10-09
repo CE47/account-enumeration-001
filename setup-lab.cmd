@@ -19,6 +19,23 @@ rem  There is a Linux / macOS twin of this file, setup-lab.sh, in the same
 rem  folder. It does exactly the same thing in exactly the same order. If you
 rem  change one, change the other, or a Windows lab and a Mac lab quietly stop
 rem  being the same lab.
+rem
+rem  THIS FILE MUST KEEP CRLF (Windows) LINE ENDINGS.  That is not a style
+rem  preference, it is a correctness requirement, and the failure it causes is
+rem  silent and very confusing.  cmd.exe finds a subroutine with CALL by seeking
+rem  to the byte offset of its label, and with LF-only endings that seek
+rem  mis-lands by one line: the first statement after the label is silently
+rem  skipped.  Most of this script runs either way, so the damage only shows up
+rem  in one place.  :vdcheck lost its "call :docurl" line, so it never asked
+rem  Kibana anything, never wrote %WORK%\vd-*.json, and then reported
+rem      FAILED: the auth-* data view did not resolve to the pattern auth-*
+rem  - a data view that was in fact created correctly and was in fact fine.
+rem  The stale HTTP code left over from the previous Elasticsearch call is what
+rem  made it look like the request had been answered.
+rem  Measured on this file: CRLF reached "The lab is ready" 4 times out of 4,
+rem  LF only 0 times out of 4.  Some editors and every "fix line endings"
+rem  formatter will silently rewrite this file back to LF, so if that failure
+rem  message ever comes back, check this before looking at anything else.
 rem ===========================================================================
 
 rem ------------------------------------------------------------------ settings
@@ -718,7 +735,13 @@ if not "%CURLCODE%"=="200" (
   call :fail "Kibana refused to create the data view !DVPAT!, HTTP %CURLCODE%" "The log data is still loaded. Check  docker logs %SCEN%-kibana  and run this file again."
   exit /b 1
 )
-call :docurl -s -o "%WORK%\dv-find.json" %KBAUTH% "%KBURL%/api/saved_objects/_find?type=index-pattern^&search_fields=title^&search=!DVPAT!^&fields=title^&per_page=50"
+rem     The ampersands in the URL below are written BARE, on purpose.  CALL
+rem     makes cmd.exe parse this line a second time, and on that second pass a
+rem     caret in the command text is doubled: "^&" reaches curl.exe as "^^&",
+rem     so Kibana is asked for a query string full of carets and answers 400.
+rem     A bare & typed inside a quoted argument survives both parses intact.
+rem     Do not "tidy" this into a variable either - see the note in :esdocount.
+call :docurl -s -o "%WORK%\dv-find.json" %KBAUTH% "%KBURL%/api/saved_objects/_find?type=index-pattern&search_fields=title&search=!DVPAT!&fields=title&per_page=50"
 findstr /c:"!DVPAT!" "%WORK%\dv-find.json" >nul 2>&1
 if errorlevel 1 (
   echo  ERROR: the data view was created but the pattern "!DVPAT!" was not stored.
@@ -912,12 +935,37 @@ rem     response it would then have to take apart in batch.
 set "EDIDX=%~1"
 set "EDVAR=%~2"
 set "EDQ=%~3"
-set "EDCNTURL=%ESURL%/%EDIDX%/_count?allow_no_indices=true^&filter_path=count"
+rem     The count URL is written out in full on both CALL lines below, with bare
+rem     ampersands, and is deliberately NOT kept in a variable.  This is not
+rem     style, it is the only spelling that survives CALL:
+rem
+rem       in a variable, caret-escaped   set "U=..true^&filter_path=count"
+rem             SET consumes the caret, so the variable holds a bare &, and the
+rem             second parse that CALL performs doubles it again - curl.exe
+rem             receives  allow_no_indices=true^^  and Elasticsearch answers
+rem               HTTP 400  illegal_argument_exception
+rem                 Failed to parse value [true^^] as only [true] or [false]
+rem
+rem       in a variable, bare            set "U=..true&filter_path=count"
+rem             the & is a command separator on the SET line itself, so the
+rem             variable is silently truncated at allow_no_indices=true
+rem
+rem       inline, caret-escaped          "..true^&filter_path=count"
+rem             CALL doubles the caret  ->  ^^&  ->  HTTP 400
+rem
+rem       inline, bare                  "..true&filter_path=count"   <-- this
+rem             the & is inside double quotes on both parses, so it arrives as
+rem             a real query-string separator
+rem
+rem     setup-lab.sh builds the identical URL with a plain &, because bash has
+rem     no second parse.  Same URL, same endpoint, opposite outcome - which is
+rem     why the two twins disagreed and only the Windows one ever failed.
+rem     Verified against Elasticsearch 9.1:  ^^ -> 400,  ^ -> 400,  & -> 200.
 call :docurl -s -o nul -X POST %ESAUTH% "%ESURL%/%EDIDX%/_refresh"
 if defined EDQ (
-  call :docurl -s -o "%WORK%\cnt.json" %ESAUTH% -X POST -H "Content-Type: application/json" --data-binary "@%EDQ%" "%EDCNTURL%"
+  call :docurl -s -o "%WORK%\cnt.json" %ESAUTH% -X POST -H "Content-Type: application/json" --data-binary "@%EDQ%" "%ESURL%/%EDIDX%/_count?allow_no_indices=true&filter_path=count"
 ) else (
-  call :docurl -s -o "%WORK%\cnt.json" %ESAUTH% "%EDCNTURL%"
+  call :docurl -s -o "%WORK%\cnt.json" %ESAUTH% "%ESURL%/%EDIDX%/_count?allow_no_indices=true&filter_path=count"
 )
 if not "%CURLCODE%"=="200" (
   call :fail "could not read the document count of %EDIDX%, HTTP %CURLCODE%" "Nothing was changed."
